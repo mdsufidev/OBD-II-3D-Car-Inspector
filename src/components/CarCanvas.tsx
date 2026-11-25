@@ -14,11 +14,11 @@ interface CarCanvasProps {
   simulateFault: boolean;
 }
 
-// Camera targets: Lowered so the grounded car sits dead-center in the viewport
-const CAR_HERO_POS = new THREE.Vector3(4.0, 1.35, 4.0);
-const CAR_TARGET = new THREE.Vector3(0, 0.35, 0);
+// Camera targets: Perfectly framed so the grounded car sits lower in the viewport with clean top clearance
+const CAR_HERO_POS = new THREE.Vector3(4.2, 1.68, 4.2);
+const CAR_TARGET = new THREE.Vector3(0, 0.78, 0);
 
-const ENGINE_HERO_POS = new THREE.Vector3(1.8, 1.0, 1.8);
+const ENGINE_HERO_POS = new THREE.Vector3(1.8, 1.05, 1.8);
 const ENGINE_TARGET = new THREE.Vector3(0, 0.50, 0);
 
 interface SceneContentProps {
@@ -51,6 +51,14 @@ const SceneContent: React.FC<SceneContentProps> = ({
 
     prevModeRef.current = viewMode;
   }, [viewMode, resetSignal]);
+
+  // Sync initial target immediately on mount
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(targetControlsTarget);
+      controlsRef.current.update();
+    }
+  }, []);
 
   // TOUCH OVERRIDE FIX: User touch immediately cancels transition
   useEffect(() => {
@@ -138,6 +146,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Smooth OrbitControls with Damping */}
       <OrbitControls
         ref={controlsRef}
+        target={[CAR_TARGET.x, CAR_TARGET.y, CAR_TARGET.z]}
         makeDefault
         enableDamping={true}
         dampingFactor={0.05}
@@ -166,7 +175,7 @@ export const CarCanvas = forwardRef<CarCanvasRef, CarCanvasProps>(
       <div className="absolute inset-0 w-full h-full touch-none select-none overflow-hidden bg-slate-50">
         <Canvas
           camera={{
-            position: [4.0, 1.35, 4.0],
+            position: [4.2, 1.68, 4.2],
             fov: 40,
             near: 0.1,
             far: 100,
