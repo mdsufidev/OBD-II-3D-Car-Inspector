@@ -121,12 +121,10 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
   const handleConnectBluetooth = async () => {
     if (navigator && 'bluetooth' in navigator) {
       try {
-        // Attempt genuine Web Bluetooth pairing with standard OBD-II UUID
         await (navigator as any).bluetooth.requestDevice({
           acceptAllDevices: true,
         });
       } catch (err) {
-        // Fallback gracefully to modal
         setShowBluetoothModal(true);
       }
     } else {
@@ -185,7 +183,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
           </div>
         </div>
 
-        {/* Right: Bluetooth Hardware & Active Status / Demo Scan Controller */}
+        {/* Right: Bluetooth Hardware & Active Status */}
         <div
           onPointerDown={(e) => e.stopPropagation()}
           className="pointer-events-auto flex items-center gap-2"
@@ -248,7 +246,6 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
             <span className="text-slate-400">{CAR_PARTS[scanStepIndex]?.ecuAddress}</span>
           </div>
 
-          {/* Linear Progress Bar */}
           <div className="mt-2 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-sky-500 transition-all duration-100 ease-linear"
@@ -278,7 +275,41 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
       />
 
       {/* ================================================================= */}
-      {/* 4. BOTTOM WORKSTATION TOOLSTRIP                                  */}
+      {/* 4. STANDALONE HERO DEMO SCAN BUTTON (COMPLETELY INDEPENDENT)      */}
+      {/* ================================================================= */}
+      {!selectedPart && (
+        <div className="pointer-events-auto fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-20 animate-in fade-in slide-in-from-bottom-2">
+          <button
+            type="button"
+            onClick={demoScanActive ? handleStopDemoScan : handleStartDemoScan}
+            className={`flex items-center gap-2.5 px-5 py-2.5 rounded-full font-mono text-xs font-bold tracking-wider shadow-2xl backdrop-blur-md border transition-all hover:scale-105 active:scale-95 group ${
+              demoScanActive
+                ? 'bg-red-600 text-white border-red-400 shadow-red-500/40'
+                : 'bg-slate-900/95 hover:bg-black text-white border-slate-700/80 shadow-slate-900/40'
+            }`}
+            title="Run automated 10-second inspection of all vehicle subsystems"
+          >
+            {demoScanActive ? (
+              <>
+                <Square className="h-3.5 w-3.5 fill-current text-white" />
+                <span>CANCEL DEMO SCAN</span>
+              </>
+            ) : (
+              <>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500" />
+                </span>
+                <Play className="h-3.5 w-3.5 fill-current text-sky-400 transition-transform group-hover:translate-x-0.5" />
+                <span>RUN DEMO SCAN</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* 5. BOTTOM WORKSTATION TOOLSTRIP                                  */}
       {/* ================================================================= */}
       <footer className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-2.5 sm:gap-0">
         {/* Left Telemetry Tag */}
@@ -287,7 +318,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
           <span>F136 PLATFORM // 3D DIGITAL TWIN</span>
         </div>
 
-        {/* Center: Main Diagnostic Workstation Toolbar */}
+        {/* Center: Main Diagnostic Workstation Toolbar (Clean, Uncrowded) */}
         <div
           onPointerDown={(e) => e.stopPropagation()}
           className="pointer-events-auto flex flex-wrap items-center justify-center gap-2"
@@ -323,26 +354,8 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
 
             <div className="h-4 w-px bg-slate-200 mx-0.5 hidden sm:block" />
 
-            {/* B. One-Click Demo Scan Button */}
-            <button
-              type="button"
-              onClick={handleStartDemoScan}
-              disabled={demoScanActive}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all ${
-                demoScanActive
-                  ? 'bg-sky-100 text-sky-800'
-                  : 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm active:scale-95'
-              }`}
-              title="Run automated 10-second inspection of all subsystems"
-            >
-              <Play className="h-3 w-3 fill-current" />
-              <span>RUN DEMO SCAN</span>
-            </button>
-
-            <div className="h-4 w-px bg-slate-200 mx-0.5 hidden sm:block" />
-
-            {/* C. Direct Diagnostic Target Selectors */}
-            <div className="hidden md:flex items-center gap-1 font-mono text-xs">
+            {/* B. Direct Diagnostic Target Selectors */}
+            <div className="flex items-center gap-1 font-mono text-xs">
               {CAR_PARTS.map((part) => {
                 const isActive = selectedPart?.id === part.id;
                 const isPartFaulty = activeDTC === part.faultCode;
@@ -375,7 +388,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
             </div>
           </div>
 
-          {/* D. Multi-DTC Fault Injection Menu Trigger */}
+          {/* C. Multi-DTC Fault Injection Menu Trigger */}
           <div className="relative">
             <button
               type="button"
@@ -465,7 +478,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
       </footer>
 
       {/* ================================================================= */}
-      {/* 5. MODALS: VIN DECODER & WEB BLUETOOTH SCANNER INTERFACE          */}
+      {/* 6. MODALS: VIN DECODER & WEB BLUETOOTH SCANNER INTERFACE          */}
       {/* ================================================================= */}
 
       {/* A. VIN Decoded Vehicle Identity Modal */}
