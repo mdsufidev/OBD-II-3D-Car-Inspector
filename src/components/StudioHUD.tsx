@@ -29,7 +29,10 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
       {/* TOP HEADER: MINIMALIST BRANDING ONLY                             */}
       {/* ================================================================= */}
       <header className="flex items-start justify-between">
-        <div className="pointer-events-auto flex items-center gap-2.5 bg-white/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-200/90 shadow-sm transition-all hover:bg-white">
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="pointer-events-auto flex items-center gap-2.5 bg-white/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-200/90 shadow-sm transition-all hover:bg-white"
+        >
           <span className="flex h-2.5 w-2.5 relative">
             <span
               className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
@@ -62,7 +65,10 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
         <div className="hidden sm:block sm:w-28" />
 
         {/* Center: 3-Mode View Switcher + Fault Simulator Toggle */}
-        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="pointer-events-auto flex flex-wrap items-center justify-center gap-2"
+        >
           {/* Main 3-Mode View Switcher */}
           <div className="flex items-center gap-1 bg-white/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-200 shadow-sm">
             <button
@@ -111,7 +117,6 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
             onClick={() => {
               setSimulateFault((prev) => {
                 const nextState = !prev;
-                // UX FIX: If activating fault while car is solid, auto-switch to transparent so engine is visible!
                 if (nextState && viewMode === 'exterior') {
                   setViewMode('xray');
                 }
@@ -132,6 +137,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
         {/* Bottom-Right Reset View Action */}
         <button
           onClick={onResetView}
+          onPointerDown={(e) => e.stopPropagation()}
           type="button"
           aria-label="Reset Camera View"
           className="pointer-events-auto group flex items-center gap-2 rounded-xl bg-white/90 hover:bg-white active:bg-slate-50 backdrop-blur-md border border-slate-200 px-4 py-2.5 shadow-sm hover:shadow transition-all duration-200 text-xs font-semibold text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"

@@ -33,53 +33,60 @@ const SceneContent: React.FC<SceneContentProps> = ({
   resetSignal,
 }) => {
   const controlsRef = useRef<OrbitControlsImpl>(null);
-  const isTransitioning = useRef(true);
+  const isTransitioning = useRef(false);
+  const prevModeRef = useRef<ViewMode>(viewMode);
 
   // Determine current mode camera goals
   const targetCamPos = viewMode === 'engine' ? ENGINE_HERO_POS : CAR_HERO_POS;
   const targetControlsTarget = viewMode === 'engine' ? ENGINE_TARGET : CAR_TARGET;
-  const targetMinDist = viewMode === 'engine' ? 0.9 : 2.8;
-  const targetMaxDist = viewMode === 'engine' ? 4.5 : 9.5;
 
-  // Trigger smooth transition whenever viewMode changes or Reset View is clicked
+  // CRITICAL FIX:
+  // 1. Only trigger camera animation on explicit Reset View button (resetSignal > 0)
+  // 2. OR when switching TO or FROM 'engine' mode.
+  // 3. Switching between 'xray' and 'exterior' (Transparent ↔ Solid) DOES NOT move camera!
   useEffect(() => {
-    isTransitioning.current = true;
+    const isEngineSwitch =
+      (viewMode === 'engine' && prevModeRef.current !== 'engine') ||
+      (viewMode !== 'engine' && prevModeRef.current === 'engine');
+
+    if (resetSignal > 0 || isEngineSwitch) {
+      isTransitioning.current = true;
+    }
+
+    prevModeRef.current = viewMode;
   }, [viewMode, resetSignal]);
 
-  // BUG #1 & #4 FIX: Smoothly lerp camera, target, and distance limits to eliminate jumping
+  // TOUCH OVERRIDE FIX: User touch immediately cancels transition so rotation NEVER freezes!
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const onUserInteractionStart = () => {
+      isTransitioning.current = false;
+    };
+
+    controls.addEventListener('start', onUserInteractionStart);
+    return () => {
+      controls.removeEventListener('start', onUserInteractionStart);
+    };
+  }, []);
+
+  // Smooth camera & target lerp
   useFrame((state, delta) => {
-    if (controlsRef.current) {
+    if (controlsRef.current && isTransitioning.current) {
       const step = Math.min(delta * 4.2, 1);
+      state.camera.position.lerp(targetCamPos, step);
+      controlsRef.current.target.lerp(targetControlsTarget, step);
+      controlsRef.current.update();
 
-      if (isTransitioning.current) {
-        state.camera.position.lerp(targetCamPos, step);
-        controlsRef.current.target.lerp(targetControlsTarget, step);
-
-        // Lerp distance limits smoothly with camera so OrbitControls does not snap distance abruptly
-        controlsRef.current.minDistance = THREE.MathUtils.lerp(
-          controlsRef.current.minDistance,
-          targetMinDist,
-          step
-        );
-        controlsRef.current.maxDistance = THREE.MathUtils.lerp(
-          controlsRef.current.maxDistance,
-          targetMaxDist,
-          step
-        );
-
+      if (
+        state.camera.position.distanceTo(targetCamPos) < 0.02 &&
+        controlsRef.current.target.distanceTo(targetControlsTarget) < 0.02
+      ) {
+        state.camera.position.copy(targetCamPos);
+        controlsRef.current.target.copy(targetControlsTarget);
         controlsRef.current.update();
-
-        if (
-          state.camera.position.distanceTo(targetCamPos) < 0.02 &&
-          controlsRef.current.target.distanceTo(targetControlsTarget) < 0.02
-        ) {
-          state.camera.position.copy(targetCamPos);
-          controlsRef.current.target.copy(targetControlsTarget);
-          controlsRef.current.minDistance = targetMinDist;
-          controlsRef.current.maxDistance = targetMaxDist;
-          controlsRef.current.update();
-          isTransitioning.current = false;
-        }
+        isTransitioning.current = false;
       }
     }
   });
@@ -92,7 +99,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Ambient Fill */}
       <ambientLight intensity={0.55} color="#f8fafc" />
 
-      {/* Optimized Directional Key Light */}
+      {/* Directional Key Light */}
       <directionalLight
         position={[6, 8, 5]}
         intensity={1.25}
@@ -123,7 +130,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         <meshStandardMaterial color="#f8fafc" roughness={0.9} metalness={0.05} />
       </mesh>
 
-      {/* BUG #3 FIX: key={viewMode} cleanly re-bakes shadow once per mode switch */}
+      {/* Grounded Contact Shadows: key={viewMode} cleanly re-bakes once per mode switch */}
       <ContactShadows
         key={viewMode}
         position={[0, 0, 0]}
@@ -136,7 +143,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         frames={1}
       />
 
-      {/* BUG #4 FIX: Do NOT pass target prop in JSX to prevent fighting with useFrame */}
+      {/* Smooth OrbitControls with Damping & Wide Distance Bounds */}
       <OrbitControls
         ref={controlsRef}
         makeDefault
@@ -144,7 +151,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         dampingFactor={0.05}
         enableZoom={true}
         enablePan={false}
-        minDistance={2.8}
+        minDistance={0.9}
         maxDistance={9.5}
         minPolarAngle={0.15}
         maxPolarAngle={Math.PI / 2 - 0.04}
