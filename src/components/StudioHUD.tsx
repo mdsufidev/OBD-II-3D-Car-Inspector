@@ -141,7 +141,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
         {/* Left: Branding & Connection Status + Expandable VIN Banner */}
         <div
           onPointerDown={(e) => e.stopPropagation()}
-          className="pointer-events-auto flex items-center gap-3 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-xl border border-slate-200/90 shadow-sm"
+          className="pointer-events-auto flex items-center gap-3 bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm"
         >
           {/* Connection LED */}
           <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold text-slate-800">
@@ -192,7 +192,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
           <button
             type="button"
             onClick={handleConnectBluetooth}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/95 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-mono font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-mono font-semibold shadow-sm transition-all"
             title="Connect physical OBD-II Bluetooth scanner (ELM327 / OBDLink)"
           >
             <Bluetooth className="h-3.5 w-3.5 text-sky-600" />
@@ -210,7 +210,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
               <span>DTC: [{activeDTC}] ACTIVE</span>
             </button>
           ) : (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200 text-slate-600 font-mono text-xs font-semibold shadow-sm">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 font-mono text-xs font-semibold shadow-sm">
               <Radio className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
               <span className="hidden sm:inline">BUS: ACTIVE // DTC: 0</span>
               <span className="sm:hidden">DTC: 0</span>
@@ -313,7 +313,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
       {/* ================================================================= */}
       <footer className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-2.5 sm:gap-0">
         {/* Left Telemetry Tag */}
-        <div className="hidden lg:flex items-center gap-2 font-mono text-[10px] text-slate-400 px-3 py-1.5 bg-white/80 backdrop-blur rounded-lg border border-slate-200">
+        <div className="hidden lg:flex items-center gap-2 font-mono text-[10px] text-slate-500 px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm">
           <SlidersHorizontal className="h-3 w-3" />
           <span>F136 PLATFORM // 3D DIGITAL TWIN</span>
         </div>
@@ -324,7 +324,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
           className="pointer-events-auto flex flex-wrap items-center justify-center gap-2"
         >
           {/* Main Workstation Cluster */}
-          <div className="flex items-center gap-1.5 bg-white/95 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 shadow-xl">
+          <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-slate-200 shadow-xl">
             {/* A. Chassis Mode Segmented Switch */}
             <div className="flex items-center bg-slate-100 p-0.5 rounded-lg font-mono text-xs font-semibold text-slate-600">
               <button
@@ -393,10 +393,10 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
             <button
               type="button"
               onClick={() => setShowDtcMenu((prev) => !prev)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl font-mono text-xs font-bold transition-all border shadow-sm backdrop-blur-md ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl font-mono text-xs font-bold transition-all border shadow-sm ${
                 activeDTC
                   ? 'bg-red-600 text-white border-red-500 shadow-red-500/30'
-                  : 'bg-white/95 hover:bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
               }`}
             >
               <AlertTriangle className={`h-3.5 w-3.5 ${activeDTC ? 'text-white' : 'text-red-600'}`} />
@@ -405,7 +405,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
 
             {/* Multi-DTC Dropdown Menu */}
             {showDtcMenu && (
-              <div className="absolute bottom-12 right-0 sm:left-0 sm:right-auto w-72 bg-white/98 backdrop-blur-xl border border-slate-200 rounded-xl shadow-2xl p-2 z-30 font-mono text-xs animate-in fade-in slide-in-from-bottom-2">
+              <div className="absolute bottom-12 right-0 sm:left-0 sm:right-auto w-72 bg-white border border-slate-300 rounded-xl shadow-2xl p-2 z-30 font-mono text-xs animate-in fade-in slide-in-from-bottom-2">
                 <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
                   <span>SELECT OBD-II FAULT CODE</span>
                   <button onClick={() => setShowDtcMenu(false)} className="text-slate-400 hover:text-slate-700">
@@ -470,7 +470,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
           onPointerDown={(e) => e.stopPropagation()}
           type="button"
           aria-label="Calibrate Camera View to Full Chassis"
-          className="pointer-events-auto group flex items-center gap-2 rounded-xl bg-white/95 hover:bg-white active:bg-slate-100 backdrop-blur-md border border-slate-200 px-3.5 py-2 shadow-sm transition-all text-xs font-mono font-semibold text-slate-700 hover:text-slate-900"
+          className="pointer-events-auto group flex items-center gap-2 rounded-xl bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-200 px-3.5 py-2 shadow-sm transition-all text-xs font-mono font-semibold text-slate-700 hover:text-slate-900"
         >
           <RotateCcw className="h-3.5 w-3.5 text-slate-500 transition-transform duration-300 group-hover:-rotate-90 group-active:scale-95" />
           <span>CALIBRATE VIEW</span>
