@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Billboard, Html } from '@react-three/drei';
+import React, { useRef, useState, useMemo } from 'react';
+import { Billboard } from '@react-three/drei';
 import { useFrame, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { CAR_PARTS, CarPart } from '../data/partsConfig';
@@ -19,25 +19,113 @@ interface SingleHotspotProps {
   isXray: boolean;
 }
 
+// Pre-generate and cache procedural CanvasTextures for locked 60 FPS performance and ZERO DOM overlay bleed
+const textureCache = new Map<string, THREE.CanvasTexture>();
+
+function getHotspotTexture(
+  zoneNumber: string,
+  state: 'nominal' | 'hover' | 'selected' | 'fault'
+): THREE.CanvasTexture {
+  const key = `${zoneNumber}-${state}`;
+  if (textureCache.has(key)) {
+    return textureCache.get(key)!;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const centerX = 128;
+  const centerY = 128;
+  const radius = 96;
+
+  let bgColor = '#0f172a'; // Deep slate nominal
+  let borderColor = '#ffffff';
+  const textColor = '#ffffff';
+
+  if (state === 'fault') {
+    bgColor = '#dc2626'; // Emergency Red
+    borderColor = '#ffffff';
+  } else if (state === 'selected') {
+    bgColor = '#0284c7'; // Active Sky Blue
+    borderColor = '#ffffff';
+  } else if (state === 'hover') {
+    bgColor = '#0369a1'; // Hover Sky
+    borderColor = '#38bdf8';
+  }
+
+  // Subtle drop shadow for depth
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 6;
+
+  // Solid circular disc
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+  ctx.fillStyle = bgColor;
+  ctx.fill();
+
+  // Reset shadow for border & text
+  ctx.shadowColor = 'transparent';
+
+  // Crisp high-contrast border
+  ctx.lineWidth = 14;
+  ctx.strokeStyle = borderColor;
+  ctx.stroke();
+
+  // Zone Number (01, 02, 03, 04) in bold monospace
+  ctx.fillStyle = textColor;
+  ctx.font = '900 86px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(zoneNumber, centerX, centerY + 3);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  textureCache.set(key, texture);
+  return texture;
+}
+
 const SingleHotspot: React.FC<SingleHotspotProps> = ({
   part,
   isSelected,
   isFaulty,
   onSelect,
-  isXray,
+  isXray: _isXray,
 }) => {
   const [hovered, setHovered] = useState(false);
-  const beaconRef = useRef<THREE.Mesh>(null);
+  const pulseRef = useRef<THREE.Mesh>(null);
 
-  // Smooth subtle pulse on 3D beacon ring when active or faulty
+  // Determine current badge state
+  const stateKey: 'nominal' | 'hover' | 'selected' | 'fault' = isFaulty
+    ? 'fault'
+    : isSelected
+    ? 'selected'
+    : hovered
+    ? 'hover'
+    : 'nominal';
+
+  const badgeTexture = useMemo(
+    () => getHotspotTexture(part.zoneNumber, stateKey),
+    [part.zoneNumber, stateKey]
+  );
+
+  // Pulse animation on outer halo when active or faulty
   useFrame((state) => {
-    if (beaconRef.current) {
+    if (pulseRef.current) {
       if (isSelected || isFaulty) {
         const freq = isFaulty ? 5.0 : 3.0;
-        const scale = 1.0 + Math.sin(state.clock.elapsedTime * freq) * 0.15;
-        beaconRef.current.scale.set(scale, scale, scale);
+        const s = 1.0 + Math.sin(state.clock.elapsedTime * freq) * 0.18;
+        pulseRef.current.scale.set(s, s, s);
       } else {
-        beaconRef.current.scale.set(1, 1, 1);
+        pulseRef.current.scale.set(1, 1, 1);
       }
     }
   });
@@ -61,85 +149,41 @@ const SingleHotspot: React.FC<SingleHotspotProps> = ({
     document.body.style.cursor = 'auto';
   };
 
-  // Color scheme: Red when DTC active, Sky Blue when selected/hovered, Titanium Slate when nominal
-  const accentColor = isFaulty
-    ? '#ef4444'
-    : isSelected
-    ? '#0284c7'
-    : hovered
-    ? '#0ea5e9'
-    : '#64748b';
+  const baseScale = isSelected ? 1.2 : hovered ? 1.1 : 1.0;
 
   return (
     <group position={part.hotspotPosition}>
-      {/* 1. Subtle 3D Circular Ground/Surface Beacon Ring (NO AI crosshairs) */}
+      {/* 1. Camera-Facing Hardware-Accelerated 3D Badge (100% Inside WebGL Canvas - NEVER bleeds over HTML modals/cards) */}
       <Billboard follow lockX={false} lockY={false} lockZ={false}>
-        <mesh ref={beaconRef}>
-          <ringGeometry args={[0.07, 0.082, 36]} />
+        {/* Pulsing Outer Halo Wave when selected or faulty */}
+        {(isSelected || isFaulty) && (
+          <mesh ref={pulseRef}>
+            <ringGeometry args={[0.13, 0.155, 36]} />
+            <meshBasicMaterial
+              color={isFaulty ? '#ef4444' : '#38bdf8'}
+              transparent
+              opacity={isFaulty ? 0.8 : 0.6}
+              side={THREE.DoubleSide}
+              depthTest={false}
+              depthWrite={false}
+            />
+          </mesh>
+        )}
+
+        {/* Crisp Numbered OEM Marker Disc */}
+        <mesh scale={[baseScale, baseScale, 1]}>
+          <planeGeometry args={[0.24, 0.24]} />
           <meshBasicMaterial
-            color={accentColor}
-            transparent
-            opacity={isFaulty ? 0.9 : isSelected ? 0.8 : hovered ? 0.6 : isXray ? 0.35 : 0.2}
+            map={badgeTexture}
+            transparent={true}
             side={THREE.DoubleSide}
             depthTest={false}
+            depthWrite={false}
           />
         </mesh>
       </Billboard>
 
-      {/* 2. Authentic OEM Technical Inspection Marker (Razor-Sharp, Clean Numbered Badge) */}
-      <Html
-        center
-        distanceFactor={9.5}
-        zIndexRange={[40, 0]}
-        className="pointer-events-none select-none"
-      >
-        <div
-          className={`relative flex items-center justify-center transition-transform duration-200 ease-out ${
-            isSelected ? 'scale-110' : hovered ? 'scale-105' : 'scale-100'
-          }`}
-        >
-          {/* Subtle status pulse wave when selected or fault */}
-          {(isSelected || isFaulty) && (
-            <span
-              className={`absolute -inset-1 rounded-full animate-ping opacity-60 ${
-                isFaulty ? 'bg-red-500' : 'bg-sky-400'
-              }`}
-            />
-          )}
-
-          {/* Solid Opaque Numbered OEM Inspection Pill */}
-          <div
-            className={`flex items-center justify-center w-7 h-7 rounded-full font-mono text-[11px] font-bold shadow-lg transition-all duration-200 border-2 ${
-              isFaulty
-                ? 'bg-red-600 text-white border-white shadow-red-500/50'
-                : isSelected
-                ? 'bg-sky-600 text-white border-white shadow-sky-500/50 ring-2 ring-sky-300'
-                : hovered
-                ? 'bg-slate-900 text-white border-sky-400 ring-2 ring-sky-400/30'
-                : 'bg-slate-900 text-white border-white/90 shadow-md'
-            }`}
-          >
-            {part.zoneNumber}
-          </div>
-
-          {/* Subsystem Name Tag on Hover, Active, or Fault */}
-          {(hovered || isSelected || isFaulty) && (
-            <div
-              className={`absolute left-full ml-2 px-2 py-0.5 rounded-md font-mono text-[10px] font-bold tracking-wide whitespace-nowrap shadow-lg border animate-in fade-in duration-150 ${
-                isFaulty
-                  ? 'bg-red-600 text-white border-red-400'
-                  : isSelected
-                  ? 'bg-sky-700 text-white border-sky-400'
-                  : 'bg-slate-900 text-white border-slate-700'
-              }`}
-            >
-              {part.name.split(' ')[0].toUpperCase()}
-            </div>
-          )}
-        </div>
-      </Html>
-
-      {/* 3. Invisible Hit Proxy Sphere for Native Three.js Raycasting & Tap-vs-Drag Protection */}
+      {/* 2. Invisible Hit Proxy Sphere for Instant Native Pointer & Touch Events */}
       <mesh
         onPointerUp={handlePointerUp}
         onPointerOver={handlePointerOver}

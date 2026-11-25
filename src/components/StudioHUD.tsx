@@ -133,7 +133,7 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
   };
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-10 flex flex-col justify-between p-3 sm:p-5 md:p-6 select-none overflow-hidden font-sans">
+    <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-3 sm:p-5 md:p-6 select-none overflow-hidden font-sans">
       {/* ================================================================= */}
       {/* 1. TOP HEADER: OEM CAN-BUS TELEMETRY & VIN BANNER                 */}
       {/* ================================================================= */}
