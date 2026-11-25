@@ -95,14 +95,11 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Ambient Fill */}
       <ambientLight intensity={0.55} color="#f8fafc" />
 
-      {/* Directional Key Light */}
+      {/* Directional Key Light (ContactShadows handles floor grounding, no shadow pass overhead) */}
       <directionalLight
         position={[6, 8, 5]}
         intensity={1.25}
         color="#ffffff"
-        castShadow
-        shadow-mapSize={[1024, 1024]}
-        shadow-bias={-0.0001}
       />
 
       {/* Rim / Backlight for Metallic Highlights */}
@@ -120,7 +117,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.005, 0]}
-        receiveShadow
       >
         <planeGeometry args={[60, 60]} />
         <meshStandardMaterial color="#f8fafc" roughness={0.9} metalness={0.05} />
@@ -180,10 +176,9 @@ export const CarCanvas = forwardRef<CarCanvasRef, CarCanvasProps>(
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.05,
             outputColorSpace: THREE.SRGBColorSpace,
-            powerPreference: 'high-performance',
+            powerPreference: 'default',
           }}
           dpr={[1, 1.5]}
-          shadows
           className="touch-none select-none outline-none"
         >
           <SceneContent

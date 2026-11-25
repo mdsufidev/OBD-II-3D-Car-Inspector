@@ -13,7 +13,6 @@ useGLTF.setDecoderPath('/draco/');
 // ============================================================================
 export const TARGET_CAR_LENGTH = 4.4; // Normalized length of the car along Z
 export const TARGET_ENGINE_SIZE = 1.05; // Normalized size of the engine
-// Positioned inside the Ferrari engine bay resting cleanly inside the chassis
 export const ENGINE_BAY_OFFSET = new THREE.Vector3(0, 0.38, 0.55);
 export const ENGINE_INSPECT_POS = new THREE.Vector3(0, 0.50, 0); // Position when isolated
 export const ENGINE_INSPECT_SCALE = 1.5; // Scale multiplier in Inspect Engine mode
@@ -39,8 +38,9 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   const carMaterialsMap = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const engineOriginalEmissives = useRef<Map<THREE.MeshStandardMaterial, { color: THREE.Color; intensity: number }>>(new Map());
 
-  // Performance cache: store engine meshes in a flat array to avoid 60fps tree traversal
+  // Performance cache: store engine meshes in a flat array
   const engineStandardMeshesRef = useRef<THREE.MeshStandardMaterial[]>([]);
+  const lastFaultStateRef = useRef<boolean>(false);
 
   // ============================================================================
   // REUSABLE SHARED TRANSPARENT MATERIALS
@@ -78,13 +78,10 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, []);
 
   // ============================================================================
-  // 1. CAR GROUNDING & AUTO-ALIGNMENT (Resting directly on floor y = 0)
+  // 1. CAR GROUNDING & AUTO-ALIGNMENT
   // ============================================================================
   const normalizedCar = useMemo(() => {
     const clone = carScene.clone(true);
-
-    // ferrari.glb root is authored with its tyres touching y = 0 and centered at (0, 0)
-    // Setting position to (0, 0, 0) grounds the tyres firmly on the floor and contact shadows
     clone.position.set(0, 0, 0);
 
     const wrapper = new THREE.Group();
@@ -99,12 +96,10 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     const size = new THREE.Vector3();
     box.getSize(size);
 
-    // Normalize scale so engine max dimension is TARGET_ENGINE_SIZE
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const scale = TARGET_ENGINE_SIZE / maxDim;
     clone.scale.setScalar(scale);
 
-    // Center engine around origin (0, 0, 0)
     const scaledBox = new THREE.Box3().setFromObject(clone);
     const scaledCenter = new THREE.Vector3();
     scaledBox.getCenter(scaledCenter);
@@ -117,7 +112,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [engineScene]);
 
   // ============================================================================
-  // 2. CACHE ORIGINAL MATERIALS & MULTI-MATERIAL SAFE ENGINE REGISTRATION
+  // 2. CACHE ORIGINAL MATERIALS
   // ============================================================================
   useEffect(() => {
     if (normalizedCar) {
@@ -203,7 +198,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [viewMode, normalizedCar, sharedMaterials]);
 
   // ============================================================================
-  // 4. ANIMATION FRAME: ENGINE POSITION & P0300 FAULT PULSING
+  // 4. LOW-LOAD ANIMATION FRAME (Zero calculations when idle)
   // ============================================================================
   useFrame((state, delta) => {
     if (!engineRef.current) return;
@@ -211,15 +206,27 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     const targetPos = viewMode === 'engine' ? ENGINE_INSPECT_POS : ENGINE_BAY_OFFSET;
     const targetScale = viewMode === 'engine' ? ENGINE_INSPECT_SCALE : 1.0;
 
-    const smoothStep = Math.min(delta * 5.0, 1.0);
-    engineRef.current.position.lerp(targetPos, smoothStep);
+    // Only calculate position lerp if not already at target
+    if (engineRef.current.position.distanceTo(targetPos) > 0.002) {
+      const smoothStep = Math.min(delta * 5.0, 1.0);
+      engineRef.current.position.lerp(targetPos, smoothStep);
+    } else {
+      engineRef.current.position.copy(targetPos);
+    }
 
-    const currentScale = engineRef.current.scale.x;
-    const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, smoothStep);
-    engineRef.current.scale.setScalar(nextScale);
+    // Only calculate scale lerp if not already at target
+    if (Math.abs(engineRef.current.scale.x - targetScale) > 0.002) {
+      const smoothStep = Math.min(delta * 5.0, 1.0);
+      const nextScale = THREE.MathUtils.lerp(engineRef.current.scale.x, targetScale, smoothStep);
+      engineRef.current.scale.setScalar(nextScale);
+    } else {
+      engineRef.current.scale.setScalar(targetScale);
+    }
 
+    // LOAD FIX: Only update emissive when fault is ACTUALLY active
     const engineMats = engineStandardMeshesRef.current;
     if (simulateFault && (viewMode === 'xray' || viewMode === 'engine')) {
+      lastFaultStateRef.current = true;
       const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
       const pulseIntensity = 0.8 + pulse * 2.8;
 
@@ -227,7 +234,9 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         engineMats[i].emissive.set('#ef4444');
         engineMats[i].emissiveIntensity = pulseIntensity;
       }
-    } else {
+    } else if (lastFaultStateRef.current) {
+      // LOAD FIX: Reset EXACTLY ONCE when fault turns off, NOT 60 times every second!
+      lastFaultStateRef.current = false;
       for (let i = 0; i < engineMats.length; i++) {
         const mat = engineMats[i];
         const orig = engineOriginalEmissives.current.get(mat);
