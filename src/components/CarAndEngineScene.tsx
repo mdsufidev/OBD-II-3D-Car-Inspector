@@ -9,7 +9,7 @@ export type ViewMode = 'xray' | 'exterior' | 'engine';
 useGLTF.setDecoderPath('/draco/');
 
 // ============================================================================
-// CONFIGURABLE ALIGNMENT CONSTANTS FOR REAL 3D CAR & ENGINE MODELS
+// CONFIGURABLE ALIGNMENT CONSTANTS FOR 3D CAR & ENGINE MODELS
 // ============================================================================
 export const TARGET_CAR_LENGTH = 4.4; // Normalized length of the car along Z
 export const TARGET_ENGINE_SIZE = 1.05; // Normalized size of the engine
@@ -26,7 +26,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   viewMode,
   simulateFault,
 }) => {
-  // Load real high-quality car.glb (Ferrari 458 Italia) and engine.glb from public/
+  // Load real high-quality car.glb and engine.glb from public/
   const { scene: carScene } = useGLTF('/car.glb', '/draco/');
   const { scene: engineScene } = useGLTF('/engine.glb', '/draco/');
 
@@ -37,6 +37,9 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   // Material caches for 100% reversible material swapping
   const carMaterialsMap = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const engineOriginalEmissives = useRef<Map<THREE.MeshStandardMaterial, { color: THREE.Color; intensity: number }>>(new Map());
+
+  // Performance cache: store engine meshes in a flat array to avoid 60fps tree traversal
+  const engineStandardMeshesRef = useRef<THREE.MeshStandardMaterial[]>([]);
 
   // ============================================================================
   // 1. AUTO-ALIGNMENT & BOUNDING BOX NORMALIZATION
@@ -52,7 +55,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     const scale = TARGET_CAR_LENGTH / maxLen;
     clone.scale.setScalar(scale);
 
-    // Recompute box after scaling to ground exactly at y = 0 and center on X & Z
+    // Ground exactly at y = 0 and center on X & Z
     const scaledBox = new THREE.Box3().setFromObject(clone);
     const scaledCenter = new THREE.Vector3();
     scaledBox.getCenter(scaledCenter);
@@ -88,7 +91,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [engineScene]);
 
   // ============================================================================
-  // 2. CACHE ORIGINAL MATERIALS
+  // 2. CACHE ORIGINAL MATERIALS & ENGINE MESH ARRAYS
   // ============================================================================
   useEffect(() => {
     if (normalizedCar) {
@@ -105,6 +108,8 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   useEffect(() => {
     if (normalizedEngine) {
       engineOriginalEmissives.current.clear();
+      const stdMats: THREE.MeshStandardMaterial[] = [];
+
       normalizedEngine.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -114,26 +119,28 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
               color: stdMat.emissive.clone(),
               intensity: stdMat.emissiveIntensity,
             });
+            stdMats.push(stdMat);
           }
         }
       });
+
+      engineStandardMeshesRef.current = stdMats;
     }
   }, [normalizedEngine]);
 
   // ============================================================================
-  // 3. TRANSPARENCY SHADER & MATERIAL SWAPPING
+  // 3. HIGH-PERFORMANCE TRANSPARENT GLASS (ZERO-LAG FORWARD SHADING)
   // ============================================================================
   useEffect(() => {
     if (!normalizedCar) return;
 
     if (viewMode === 'xray') {
-      // TRANSPARENT X-RAY CAR (Default): Body shell is crystal see-through glass
+      // High-performance clearcoat glass: NO transmission render passes = Pure 60 FPS
       normalizedCar.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
           const name = (mesh.name || '').toLowerCase();
 
-          // Target outer body panels and trims to make transparent
           if (
             name.includes('body') ||
             name.includes('carbon') ||
@@ -143,33 +150,30 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
             name.includes('main')
           ) {
             mesh.material = new THREE.MeshPhysicalMaterial({
-              color: new THREE.Color('#38bdf8'), // Sleek automotive cyan glass
-              metalness: 0.1,
-              roughness: 0.12,
-              transmission: 0.85, // High transmission = crystal see-through
+              color: new THREE.Color('#38bdf8'),
+              metalness: 0.15,
+              roughness: 0.08,
               transparent: true,
-              opacity: 0.22,
-              depthWrite: false, // Prevents clipping with engine inside
-              ior: 1.45,
+              opacity: 0.25, // Crystal clear view of engine without transmission GPU bottleneck
+              depthWrite: false,
               clearcoat: 1.0,
-              clearcoatRoughness: 0.05,
-              reflectivity: 0.9,
+              clearcoatRoughness: 0.08,
+              reflectivity: 0.95,
             });
           } else if (name.includes('glass')) {
             mesh.material = new THREE.MeshPhysicalMaterial({
               color: new THREE.Color('#e0f2fe'),
-              transmission: 0.95,
               transparent: true,
-              opacity: 0.12,
+              opacity: 0.15,
               depthWrite: false,
               roughness: 0.02,
+              clearcoat: 1.0,
             });
           } else if (
             name.includes('interior') ||
             name.includes('leather') ||
             name.includes('carpet')
           ) {
-            // Semi-transparent interior so cockpit is subtly visible without blocking the engine
             mesh.material = new THREE.MeshStandardMaterial({
               color: new THREE.Color('#334155'),
               roughness: 0.7,
@@ -179,7 +183,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
               depthWrite: false,
             });
           }
-          // Note: Rims, tyres, brakes remain fully opaque to maintain structural realism
         }
       });
     } else if (viewMode === 'exterior') {
@@ -197,12 +200,12 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [viewMode, normalizedCar]);
 
   // ============================================================================
-  // 4. ANIMATION FRAME: ENGINE POSITION & P0300 FAULT PULSING
+  // 4. ANIMATION FRAME: ENGINE POSITION & P0300 FAULT PULSING (CACHED)
   // ============================================================================
   useFrame((state, delta) => {
     if (!engineRef.current) return;
 
-    // Smoothly animate engine between the car bay and isolated center inspection
+    // Smoothly animate engine position and scale
     const targetPos = viewMode === 'engine' ? ENGINE_INSPECT_POS : ENGINE_BAY_OFFSET;
     const targetScale = viewMode === 'engine' ? ENGINE_INSPECT_SCALE : 1.0;
 
@@ -213,39 +216,28 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, smoothStep);
     engineRef.current.scale.setScalar(nextScale);
 
-    // OBD-II Fault Pulse Animation (P0300 Misfire)
+    // High-performance pulse using flat array (zero tree traversal overhead)
+    const engineMats = engineStandardMeshesRef.current;
     if (simulateFault) {
-      const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5; // 0.0 to 1.0
-      const pulseIntensity = 0.8 + pulse * 3.0;
+      const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
+      const pulseIntensity = 0.8 + pulse * 2.8;
 
-      normalizedEngine.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          if (mesh.material && 'emissive' in mesh.material) {
-            const stdMat = mesh.material as THREE.MeshStandardMaterial;
-            stdMat.emissive.set('#ef4444');
-            stdMat.emissiveIntensity = pulseIntensity;
-          }
-        }
-      });
+      for (let i = 0; i < engineMats.length; i++) {
+        engineMats[i].emissive.set('#ef4444');
+        engineMats[i].emissiveIntensity = pulseIntensity;
+      }
     } else {
-      // Reset emissives back to pristine original state
-      normalizedEngine.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          if (mesh.material && 'emissive' in mesh.material) {
-            const stdMat = mesh.material as THREE.MeshStandardMaterial;
-            const orig = engineOriginalEmissives.current.get(stdMat);
-            if (orig) {
-              stdMat.emissive.copy(orig.color);
-              stdMat.emissiveIntensity = orig.intensity;
-            } else {
-              stdMat.emissive.set('#000000');
-              stdMat.emissiveIntensity = 0;
-            }
-          }
+      for (let i = 0; i < engineMats.length; i++) {
+        const mat = engineMats[i];
+        const orig = engineOriginalEmissives.current.get(mat);
+        if (orig) {
+          mat.emissive.copy(orig.color);
+          mat.emissiveIntensity = orig.intensity;
+        } else {
+          mat.emissive.set('#000000');
+          mat.emissiveIntensity = 0;
         }
-      });
+      }
     }
   });
 
@@ -253,14 +245,14 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
 
   return (
     <group name="CarAndEngineScene">
-      {/* 1. REAL CAR MODEL (Ferrari 458 Italia) */}
+      {/* 1. REAL CAR MODEL */}
       <primitive
         ref={carRef}
         object={normalizedCar}
         visible={isCarVisible}
       />
 
-      {/* 2. REALISTIC ENGINE MODEL (Visible inside transparent car) */}
+      {/* 2. REALISTIC ENGINE MODEL */}
       <group
         ref={engineRef}
         position={ENGINE_BAY_OFFSET.toArray()}
@@ -290,6 +282,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   );
 };
 
-// Pre-load GLTF assets into Drei cache
+// Pre-load GLTF assets
 useGLTF.preload('/car.glb', '/draco/');
 useGLTF.preload('/engine.glb', '/draco/');

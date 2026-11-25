@@ -72,13 +72,13 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Ambient Fill */}
       <ambientLight intensity={0.55} color="#f8fafc" />
 
-      {/* Soft Directional Key Light with High-Res Shadows */}
+      {/* Optimized Directional Key Light (1024x1024 depth map = 75% less shadow compute) */}
       <directionalLight
         position={[6, 8, 5]}
         intensity={1.25}
         color="#ffffff"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0001}
       />
 
@@ -103,7 +103,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         <meshStandardMaterial color="#f8fafc" roughness={0.9} metalness={0.05} />
       </mesh>
 
-      {/* Grounded Contact Shadows */}
+      {/* Optimized Contact Shadows: frames={1} freezes shadow calculation after initial bake */}
       <ContactShadows
         position={[0, 0, 0]}
         opacity={0.65}
@@ -112,6 +112,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         far={3.5}
         resolution={1024}
         color="#0f172a"
+        frames={1}
       />
 
       {/* Smooth OrbitControls with Damping & Clamped Orbit */}
@@ -125,7 +126,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         minDistance={viewMode === 'engine' ? 0.9 : 2.8}
         maxDistance={viewMode === 'engine' ? 4.5 : 9.5}
         minPolarAngle={0.15}
-        maxPolarAngle={Math.PI / 2 - 0.04} // Camera cannot clip below showroom floor
+        maxPolarAngle={Math.PI / 2 - 0.04}
         target={targetControlsTarget}
       />
     </>
@@ -158,7 +159,8 @@ export const CarCanvas = forwardRef<CarCanvasRef, CarCanvasProps>(
             outputColorSpace: THREE.SRGBColorSpace,
             powerPreference: 'high-performance',
           }}
-          dpr={[1, 2]}
+          // Clamped DPR (1 to 1.5): Ultra-sharp visuals with 40% less fragment shader compute
+          dpr={[1, 1.5]}
           shadows
           className="touch-none select-none outline-none"
         >
