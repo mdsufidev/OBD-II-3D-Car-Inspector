@@ -42,6 +42,41 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   const engineStandardMeshesRef = useRef<THREE.MeshStandardMaterial[]>([]);
 
   // ============================================================================
+  // REUSABLE SHARED TRANSPARENT MATERIALS (Zero allocation on mode switch)
+  // ============================================================================
+  const sharedMaterials = useMemo(() => {
+    return {
+      transparentBody: new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color('#38bdf8'),
+        metalness: 0.15,
+        roughness: 0.08,
+        transparent: true,
+        opacity: 0.25,
+        depthWrite: false,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.08,
+        reflectivity: 0.95,
+      }),
+      transparentGlass: new THREE.MeshPhysicalMaterial({
+        color: new THREE.Color('#e0f2fe'),
+        transparent: true,
+        opacity: 0.15,
+        depthWrite: false,
+        roughness: 0.02,
+        clearcoat: 1.0,
+      }),
+      transparentInterior: new THREE.MeshStandardMaterial({
+        color: new THREE.Color('#334155'),
+        roughness: 0.7,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+      }),
+    };
+  }, []);
+
+  // ============================================================================
   // 1. AUTO-ALIGNMENT & BOUNDING BOX NORMALIZATION
   // ============================================================================
   const normalizedCar = useMemo(() => {
@@ -91,7 +126,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [engineScene]);
 
   // ============================================================================
-  // 2. CACHE ORIGINAL MATERIALS & ENGINE MESH ARRAYS
+  // 2. CACHE ORIGINAL MATERIALS & MULTI-MATERIAL SAFE ENGINE REGISTRATION
   // ============================================================================
   useEffect(() => {
     if (normalizedCar) {
@@ -113,14 +148,18 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
       normalizedEngine.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          if (mesh.material && 'emissive' in mesh.material) {
-            const stdMat = mesh.material as THREE.MeshStandardMaterial;
-            engineOriginalEmissives.current.set(stdMat, {
-              color: stdMat.emissive.clone(),
-              intensity: stdMat.emissiveIntensity,
-            });
-            stdMats.push(stdMat);
-          }
+          // Multi-material safe check (handles single Material or Material[])
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((mat) => {
+            if (mat && 'emissive' in mat) {
+              const stdMat = mat as THREE.MeshStandardMaterial;
+              engineOriginalEmissives.current.set(stdMat, {
+                color: stdMat.emissive.clone(),
+                intensity: stdMat.emissiveIntensity,
+              });
+              stdMats.push(stdMat);
+            }
+          });
         }
       });
 
@@ -129,13 +168,13 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [normalizedEngine]);
 
   // ============================================================================
-  // 3. HIGH-PERFORMANCE TRANSPARENT GLASS (ZERO-LAG FORWARD SHADING)
+  // 3. ZERO-ALLOCATION MATERIAL SWAPPING
   // ============================================================================
   useEffect(() => {
     if (!normalizedCar) return;
 
     if (viewMode === 'xray') {
-      // High-performance clearcoat glass: NO transmission render passes = Pure 60 FPS
+      // Re-use shared single material instances (Zero memory allocation & 0 GC stutter)
       normalizedCar.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -149,39 +188,15 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
             name.includes('yellow') ||
             name.includes('main')
           ) {
-            mesh.material = new THREE.MeshPhysicalMaterial({
-              color: new THREE.Color('#38bdf8'),
-              metalness: 0.15,
-              roughness: 0.08,
-              transparent: true,
-              opacity: 0.25, // Crystal clear view of engine without transmission GPU bottleneck
-              depthWrite: false,
-              clearcoat: 1.0,
-              clearcoatRoughness: 0.08,
-              reflectivity: 0.95,
-            });
+            mesh.material = sharedMaterials.transparentBody;
           } else if (name.includes('glass')) {
-            mesh.material = new THREE.MeshPhysicalMaterial({
-              color: new THREE.Color('#e0f2fe'),
-              transparent: true,
-              opacity: 0.15,
-              depthWrite: false,
-              roughness: 0.02,
-              clearcoat: 1.0,
-            });
+            mesh.material = sharedMaterials.transparentGlass;
           } else if (
             name.includes('interior') ||
             name.includes('leather') ||
             name.includes('carpet')
           ) {
-            mesh.material = new THREE.MeshStandardMaterial({
-              color: new THREE.Color('#334155'),
-              roughness: 0.7,
-              metalness: 0.2,
-              transparent: true,
-              opacity: 0.35,
-              depthWrite: false,
-            });
+            mesh.material = sharedMaterials.transparentInterior;
           }
         }
       });
@@ -197,10 +212,10 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         }
       });
     }
-  }, [viewMode, normalizedCar]);
+  }, [viewMode, normalizedCar, sharedMaterials]);
 
   // ============================================================================
-  // 4. ANIMATION FRAME: ENGINE POSITION & P0300 FAULT PULSING (CACHED)
+  // 4. ANIMATION FRAME: ENGINE POSITION & P0300 FAULT PULSING
   // ============================================================================
   useFrame((state, delta) => {
     if (!engineRef.current) return;
@@ -218,7 +233,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
 
     // High-performance pulse using flat array (zero tree traversal overhead)
     const engineMats = engineStandardMeshesRef.current;
-    if (simulateFault) {
+    if (simulateFault && (viewMode === 'xray' || viewMode === 'engine')) {
       const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
       const pulseIntensity = 0.8 + pulse * 2.8;
 
@@ -242,6 +257,8 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   });
 
   const isCarVisible = viewMode !== 'engine';
+  // BUG #2 FIX: Hide engine in solid exterior mode to save draw calls & prevent window clipping
+  const isEngineVisible = viewMode !== 'exterior';
 
   return (
     <group name="CarAndEngineScene">
@@ -256,12 +273,12 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
       <group
         ref={engineRef}
         position={ENGINE_BAY_OFFSET.toArray()}
-        visible={true}
+        visible={isEngineVisible}
       >
         <primitive object={normalizedEngine} />
 
-        {/* 3D FLOATING HTML FAULT BADGE */}
-        {simulateFault && (
+        {/* 3D FLOATING HTML FAULT BADGE (Only in Transparent and Engine modes) */}
+        {simulateFault && (viewMode === 'xray' || viewMode === 'engine') && (
           <Html
             position={[0, 0.75, 0]}
             center

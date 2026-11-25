@@ -55,13 +55,13 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
       </header>
 
       {/* ================================================================= */}
-      {/* BOTTOM FLOATING CONTROLS: CLEAN & MODERN                         */}
+      {/* BOTTOM FLOATING CONTROLS                                         */}
       {/* ================================================================= */}
       <footer className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-3 sm:gap-0">
-        {/* Empty left spacer on desktop so center buttons stay balanced */}
+        {/* Spacer for desktop symmetry */}
         <div className="hidden sm:block sm:w-28" />
 
-        {/* Center: Clean 3-Mode Pill Bar + Fault Simulator Toggle */}
+        {/* Center: 3-Mode View Switcher + Fault Simulator Toggle */}
         <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
           {/* Main 3-Mode View Switcher */}
           <div className="flex items-center gap-1 bg-white/90 backdrop-blur-md p-1.5 rounded-2xl border border-slate-200 shadow-sm">
@@ -105,10 +105,19 @@ export const StudioHUD: React.FC<StudioHUDProps> = ({
             </button>
           </div>
 
-          {/* Toggleable OBD-II Fault Simulator Button */}
+          {/* Toggleable OBD-II Fault Simulator Button (Auto-switches to transparent if solid) */}
           <button
             type="button"
-            onClick={() => setSimulateFault((prev) => !prev)}
+            onClick={() => {
+              setSimulateFault((prev) => {
+                const nextState = !prev;
+                // UX FIX: If activating fault while car is solid, auto-switch to transparent so engine is visible!
+                if (nextState && viewMode === 'exterior') {
+                  setViewMode('xray');
+                }
+                return nextState;
+              });
+            }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-semibold transition-all duration-200 border shadow-sm backdrop-blur-md ${
               simulateFault
                 ? 'bg-red-500 text-white border-red-400 shadow-red-200 animate-pulse'

@@ -7,7 +7,8 @@ export const StudioLoader: React.FC = () => {
   if (!active && progress === 100) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur-md transition-opacity duration-500 pointer-events-none">
+    // BUG #7 FIX: pointer-events-auto prevents dragging half-loaded 3D scenes before completion
+    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-md transition-opacity duration-500 pointer-events-auto select-none">
       <div className="relative flex items-center justify-center">
         {/* Animated outer ring */}
         <div className="h-16 w-16 rounded-full border-2 border-slate-200 border-t-slate-800 animate-spin" />
