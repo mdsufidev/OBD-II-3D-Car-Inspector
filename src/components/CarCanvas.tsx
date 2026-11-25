@@ -14,29 +14,28 @@ export interface CarCanvasRef {
 interface CarCanvasProps {
   isXray: boolean;
   selectedPart: CarPart | null;
+  activeDTC: string | null;
   onSelectPart: (partId: string) => void;
   onClearSelection: () => void;
-  simulateFault: boolean;
 }
 
 interface SceneContentProps {
   isXray: boolean;
   selectedPart: CarPart | null;
+  activeDTC: string | null;
   onSelectPart: (partId: string) => void;
   onClearSelection: () => void;
-  simulateFault: boolean;
   resetSignal: number;
 }
 
 const SceneContent: React.FC<SceneContentProps> = ({
   isXray,
   selectedPart,
+  activeDTC,
   onSelectPart,
   onClearSelection,
-  simulateFault,
   resetSignal,
 }) => {
-  // Empty studio floor tap deselects active part with tap-vs-drag protection
   const handleFloorClick = (e: ThreeEvent<PointerEvent>) => {
     if (e.delta <= 5) {
       onClearSelection();
@@ -51,7 +50,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Ambient Fill */}
       <ambientLight intensity={0.55} color="#f8fafc" />
 
-      {/* Directional Key Light (ContactShadows handles floor grounding) */}
+      {/* Directional Key Light */}
       <directionalLight position={[6, 8, 5]} intensity={1.25} color="#ffffff" />
 
       {/* Rim / Backlight for Metallic Highlights */}
@@ -60,17 +59,18 @@ const SceneContent: React.FC<SceneContentProps> = ({
       {/* Front Fill Light */}
       <directionalLight position={[0, 3, 6]} intensity={0.4} color="#f1f5f9" />
 
-      {/* 2-Model Scene (Car + Engine with Direct Mesh Click Detection) */}
+      {/* 2-Model Scene (Car + Engine with Direct Multi-DTC Alerts) */}
       <Suspense fallback={null}>
         <CarAndEngineScene
           isXray={isXray}
           selectedPartId={selectedPart?.id ?? null}
-          simulateFault={simulateFault}
+          activeDTC={activeDTC}
         />
 
-        {/* 3D Interactive Diagnostic Hotspots */}
+        {/* 3D Interactive Diagnostic Hotspots with Multi-DTC Glow */}
         <DiagnosticHotspots
           selectedPartId={selectedPart?.id ?? null}
+          activeDTC={activeDTC}
           onSelectPart={onSelectPart}
           isXray={isXray}
         />
@@ -105,7 +105,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
 };
 
 export const CarCanvas = forwardRef<CarCanvasRef, CarCanvasProps>(
-  ({ isXray, selectedPart, onSelectPart, onClearSelection, simulateFault }, ref) => {
+  ({ isXray, selectedPart, activeDTC, onSelectPart, onClearSelection }, ref) => {
     const [resetSignal, setResetSignal] = useState(0);
 
     useImperativeHandle(ref, () => ({
@@ -137,9 +137,9 @@ export const CarCanvas = forwardRef<CarCanvasRef, CarCanvasProps>(
           <SceneContent
             isXray={isXray}
             selectedPart={selectedPart}
+            activeDTC={activeDTC}
             onSelectPart={onSelectPart}
             onClearSelection={onClearSelection}
-            simulateFault={simulateFault}
             resetSignal={resetSignal}
           />
         </Canvas>

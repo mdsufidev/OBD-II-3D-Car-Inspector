@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useGLTF, Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import { getPartByDTC } from '../data/partsConfig';
 
 // Configure local Draco decoder path
 useGLTF.setDecoderPath('/draco/');
@@ -16,13 +17,13 @@ export const ENGINE_BAY_OFFSET = new THREE.Vector3(0, 0.38, 0.55);
 interface CarAndEngineSceneProps {
   isXray: boolean;
   selectedPartId: string | null;
-  simulateFault: boolean;
+  activeDTC: string | null;
 }
 
 export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   isXray,
   selectedPartId,
-  simulateFault,
+  activeDTC,
 }) => {
   // Load real high-quality car.glb and engine.glb from public/
   const { scene: carScene } = useGLTF('/car.glb', '/draco/');
@@ -41,13 +42,13 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   const lastFaultStateRef = useRef<boolean>(false);
   const lastHighlightPartRef = useRef<string | null>(null);
 
+  const faultyPart = getPartByDTC(activeDTC);
+
   // ============================================================================
-  // HIGH-PERFORMANCE X-RAY MATERIALS (Optimized to eliminate overdraw & clearcoat lag)
+  // HIGH-PERFORMANCE X-RAY MATERIALS
   // ============================================================================
   const sharedMaterials = useMemo(() => {
     return {
-      // MeshStandardMaterial executes 5x faster than MeshPhysicalMaterial with clearcoat
-      // side: FrontSide cuts fragment operations in half by ignoring interior backfaces
       transparentBody: new THREE.MeshStandardMaterial({
         color: new THREE.Color('#38bdf8'),
         metalness: 0.12,
@@ -96,7 +97,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     scaledBox.getCenter(scaledCenter);
     clone.position.set(-scaledCenter.x, -scaledCenter.y, -scaledCenter.z);
 
-    // Ensure engine components are strictly opaque with depthWrite: true to prevent engine self-overdraw
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -169,8 +169,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
           const mesh = child as THREE.Mesh;
           const name = (mesh.name || '').toLowerCase();
 
-          // HUGE LAG FIX: Hide interior clutter (carpet, leather seats, steering column) in X-Ray!
-          // This eliminates 15x transparent overdraw, dropping fragment invocations by 85%!
+          // Hide interior clutter in X-Ray (carpet, seats, steering column)
           if (
             name.includes('leather') ||
             name.includes('carpet') ||
@@ -195,7 +194,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
             mesh.visible = true;
             mesh.material = sharedMaterials.transparentGlass;
           } else {
-            // Wheels, rims, brakes stay visible and crisp
             mesh.visible = true;
           }
         }
@@ -216,13 +214,13 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [isXray, normalizedCar, sharedMaterials]);
 
   // ============================================================================
-  // 4. LOW-LOAD ANIMATION FRAME (Zero math when idle)
+  // 4. LOW-LOAD ANIMATION FRAME (Multi-DTC pulse & highlight)
   // ============================================================================
   useFrame((state) => {
     const engineMats = engineStandardMeshesRef.current;
+    const isEngineFault = activeDTC === 'P0300';
 
-    // Emissive Highlights (Only runs when fault is active or engine is selected)
-    if (simulateFault && isXray) {
+    if (isEngineFault && isXray) {
       lastFaultStateRef.current = true;
       const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
       const pulseIntensity = 0.8 + pulse * 2.8;
@@ -241,7 +239,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         engineMats[i].emissiveIntensity = highlightIntensity;
       }
     } else if (lastFaultStateRef.current || lastHighlightPartRef.current) {
-      // Reset emissives ONCE when highlight clears
       lastFaultStateRef.current = false;
       lastHighlightPartRef.current = null;
 
@@ -277,25 +274,25 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         visible={isEngineVisible}
       >
         <primitive object={normalizedEngine} />
-
-        {/* 3D FLOATING HTML FAULT BADGE (When P0300 active) */}
-        {simulateFault && isXray && (
-          <Html
-            position={[0, 0.70, 0]}
-            center
-            distanceFactor={8}
-            className="pointer-events-none select-none"
-          >
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-600/95 text-white shadow-xl backdrop-blur-md border border-red-300 text-xs font-mono font-bold tracking-wider animate-pulse whitespace-nowrap">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-              </span>
-              <span>DTC P0300: MISFIRE DETECTED</span>
-            </div>
-          </Html>
-        )}
       </group>
+
+      {/* 3. 3D FLOATING HTML FAULT BADGE (Positioned on the active fault zone) */}
+      {faultyPart && isXray && (
+        <Html
+          position={faultyPart.faultBadgePosition}
+          center
+          distanceFactor={7.5}
+          className="pointer-events-none select-none"
+        >
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-600/95 text-white shadow-xl backdrop-blur-md border border-red-300 text-xs font-mono font-bold tracking-wider animate-pulse whitespace-nowrap shadow-red-500/50">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+            </span>
+            <span>DTC {faultyPart.fault.code}: {faultyPart.fault.title.toUpperCase()}</span>
+          </div>
+        </Html>
+      )}
     </group>
   );
 };
