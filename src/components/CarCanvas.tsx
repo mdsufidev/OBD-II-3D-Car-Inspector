@@ -14,12 +14,12 @@ interface CarCanvasProps {
   simulateFault: boolean;
 }
 
-// Camera targets per view mode
-const CAR_HERO_POS = new THREE.Vector3(4.2, 1.8, 4.2);
-const CAR_TARGET = new THREE.Vector3(0, 0.55, 0);
+// Camera targets: Lowered so the grounded car sits dead-center in the viewport
+const CAR_HERO_POS = new THREE.Vector3(4.0, 1.35, 4.0);
+const CAR_TARGET = new THREE.Vector3(0, 0.35, 0);
 
-const ENGINE_HERO_POS = new THREE.Vector3(1.8, 1.1, 1.8);
-const ENGINE_TARGET = new THREE.Vector3(0, 0.60, 0);
+const ENGINE_HERO_POS = new THREE.Vector3(1.8, 1.0, 1.8);
+const ENGINE_TARGET = new THREE.Vector3(0, 0.50, 0);
 
 interface SceneContentProps {
   viewMode: ViewMode;
@@ -40,10 +40,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
   const targetCamPos = viewMode === 'engine' ? ENGINE_HERO_POS : CAR_HERO_POS;
   const targetControlsTarget = viewMode === 'engine' ? ENGINE_TARGET : CAR_TARGET;
 
-  // CRITICAL FIX:
-  // 1. Only trigger camera animation on explicit Reset View button (resetSignal > 0)
-  // 2. OR when switching TO or FROM 'engine' mode.
-  // 3. Switching between 'xray' and 'exterior' (Transparent ↔ Solid) DOES NOT move camera!
   useEffect(() => {
     const isEngineSwitch =
       (viewMode === 'engine' && prevModeRef.current !== 'engine') ||
@@ -56,7 +52,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
     prevModeRef.current = viewMode;
   }, [viewMode, resetSignal]);
 
-  // TOUCH OVERRIDE FIX: User touch immediately cancels transition so rotation NEVER freezes!
+  // TOUCH OVERRIDE FIX: User touch immediately cancels transition
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -130,7 +126,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         <meshStandardMaterial color="#f8fafc" roughness={0.9} metalness={0.05} />
       </mesh>
 
-      {/* Grounded Contact Shadows: key={viewMode} cleanly re-bakes once per mode switch */}
+      {/* Grounded Contact Shadows: Directly beneath tyres on floor */}
       <ContactShadows
         key={viewMode}
         position={[0, 0, 0]}
@@ -143,7 +139,7 @@ const SceneContent: React.FC<SceneContentProps> = ({
         frames={1}
       />
 
-      {/* Smooth OrbitControls with Damping & Wide Distance Bounds */}
+      {/* Smooth OrbitControls with Damping */}
       <OrbitControls
         ref={controlsRef}
         makeDefault
@@ -174,7 +170,7 @@ export const CarCanvas = forwardRef<CarCanvasRef, CarCanvasProps>(
       <div className="absolute inset-0 w-full h-full touch-none select-none overflow-hidden bg-slate-50">
         <Canvas
           camera={{
-            position: [4.2, 1.8, 4.2],
+            position: [4.0, 1.35, 4.0],
             fov: 40,
             near: 0.1,
             far: 100,

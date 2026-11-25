@@ -13,9 +13,10 @@ useGLTF.setDecoderPath('/draco/');
 // ============================================================================
 export const TARGET_CAR_LENGTH = 4.4; // Normalized length of the car along Z
 export const TARGET_ENGINE_SIZE = 1.05; // Normalized size of the engine
-export const ENGINE_BAY_OFFSET = new THREE.Vector3(0, 0.46, 0.55); // Position inside the Ferrari engine bay
-export const ENGINE_INSPECT_POS = new THREE.Vector3(0, 0.60, 0); // Position when isolated
-export const ENGINE_INSPECT_SCALE = 1.6; // Scale multiplier in Inspect Engine mode
+// Positioned inside the Ferrari engine bay resting cleanly inside the chassis
+export const ENGINE_BAY_OFFSET = new THREE.Vector3(0, 0.38, 0.55);
+export const ENGINE_INSPECT_POS = new THREE.Vector3(0, 0.50, 0); // Position when isolated
+export const ENGINE_INSPECT_SCALE = 1.5; // Scale multiplier in Inspect Engine mode
 
 interface CarAndEngineSceneProps {
   viewMode: ViewMode;
@@ -42,7 +43,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   const engineStandardMeshesRef = useRef<THREE.MeshStandardMaterial[]>([]);
 
   // ============================================================================
-  // REUSABLE SHARED TRANSPARENT MATERIALS (Zero allocation on mode switch)
+  // REUSABLE SHARED TRANSPARENT MATERIALS
   // ============================================================================
   const sharedMaterials = useMemo(() => {
     return {
@@ -77,24 +78,14 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, []);
 
   // ============================================================================
-  // 1. AUTO-ALIGNMENT & BOUNDING BOX NORMALIZATION
+  // 1. CAR GROUNDING & AUTO-ALIGNMENT (Resting directly on floor y = 0)
   // ============================================================================
   const normalizedCar = useMemo(() => {
     const clone = carScene.clone(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    box.getSize(size);
 
-    // Normalize length so max horizontal dimension is TARGET_CAR_LENGTH
-    const maxLen = Math.max(size.z, size.x) || 1;
-    const scale = TARGET_CAR_LENGTH / maxLen;
-    clone.scale.setScalar(scale);
-
-    // Ground exactly at y = 0 and center on X & Z
-    const scaledBox = new THREE.Box3().setFromObject(clone);
-    const scaledCenter = new THREE.Vector3();
-    scaledBox.getCenter(scaledCenter);
-    clone.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
+    // ferrari.glb root is authored with its tyres touching y = 0 and centered at (0, 0)
+    // Setting position to (0, 0, 0) grounds the tyres firmly on the floor and contact shadows
+    clone.position.set(0, 0, 0);
 
     const wrapper = new THREE.Group();
     wrapper.name = 'Car_Wrapper';
@@ -148,7 +139,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
       normalizedEngine.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          // Multi-material safe check (handles single Material or Material[])
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
           mats.forEach((mat) => {
             if (mat && 'emissive' in mat) {
@@ -174,7 +164,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     if (!normalizedCar) return;
 
     if (viewMode === 'xray') {
-      // Re-use shared single material instances (Zero memory allocation & 0 GC stutter)
       normalizedCar.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -201,7 +190,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         }
       });
     } else if (viewMode === 'exterior') {
-      // SOLID SHOWROOM: Restores original opaque materials
       normalizedCar.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -220,7 +208,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   useFrame((state, delta) => {
     if (!engineRef.current) return;
 
-    // Smoothly animate engine position and scale
     const targetPos = viewMode === 'engine' ? ENGINE_INSPECT_POS : ENGINE_BAY_OFFSET;
     const targetScale = viewMode === 'engine' ? ENGINE_INSPECT_SCALE : 1.0;
 
@@ -231,7 +218,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, smoothStep);
     engineRef.current.scale.setScalar(nextScale);
 
-    // High-performance pulse using flat array (zero tree traversal overhead)
     const engineMats = engineStandardMeshesRef.current;
     if (simulateFault && (viewMode === 'xray' || viewMode === 'engine')) {
       const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
@@ -257,7 +243,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   });
 
   const isCarVisible = viewMode !== 'engine';
-  // BUG #2 FIX: Hide engine in solid exterior mode to save draw calls & prevent window clipping
   const isEngineVisible = viewMode !== 'exterior';
 
   return (
@@ -277,10 +262,10 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
       >
         <primitive object={normalizedEngine} />
 
-        {/* 3D FLOATING HTML FAULT BADGE (Only in Transparent and Engine modes) */}
+        {/* 3D FLOATING HTML FAULT BADGE */}
         {simulateFault && (viewMode === 'xray' || viewMode === 'engine') && (
           <Html
-            position={[0, 0.75, 0]}
+            position={[0, 0.70, 0]}
             center
             distanceFactor={8}
             className="pointer-events-none select-none"
