@@ -2,31 +2,60 @@ import React, { useState, useRef } from 'react';
 import { CarCanvas, CarCanvasRef } from './components/CarCanvas';
 import { StudioHUD } from './components/StudioHUD';
 import { StudioLoader } from './components/Loader';
-import { ViewMode } from './components/CarAndEngineScene';
+import { getPartById } from './data/partsConfig';
 
 const App: React.FC = () => {
-  // Default to 'xray' (Transparent Car) so the engine is immediately visible!
-  const [viewMode, setViewMode] = useState<ViewMode>('xray');
+  // Phase 2 State Management
+  const [isXray, setIsXray] = useState<boolean>(true);
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [simulateFault, setSimulateFault] = useState<boolean>(false);
+
   const canvasRef = useRef<CarCanvasRef>(null);
 
+  // Active focused part object from config
+  const selectedPart = getPartById(selectedPartId) ?? null;
+
+  // Handle part selection from either 3D hotspots, direct mesh click, or HUD
+  const handleSelectPart = (partId: string) => {
+    const part = getPartById(partId);
+    if (!part) return;
+
+    // Auto-enable X-Ray if the clicked part is internal (like Engine or Battery)
+    if (part.isInternal && !isXray) {
+      setIsXray(true);
+    }
+
+    setSelectedPartId(partId);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedPartId(null);
+  };
+
   const handleResetView = () => {
+    setSelectedPartId(null);
     canvasRef.current?.resetCamera();
   };
 
   return (
     <main className="fixed inset-0 w-screen h-[100dvh] overflow-hidden bg-slate-50 touch-none select-none">
-      {/* 3D Automotive Studio Canvas (Real Car + Engine) */}
+      {/* 3D Automotive Studio Canvas */}
       <CarCanvas
         ref={canvasRef}
-        viewMode={viewMode}
+        isXray={isXray}
+        selectedPart={selectedPart}
+        onSelectPart={handleSelectPart}
+        onClearSelection={handleClearSelection}
         simulateFault={simulateFault}
       />
 
-      {/* Floating 3-Mode Studio HUD & Diagnostics */}
+      {/* Floating Automotive HUD & Diagnostics */}
       <StudioHUD
-        viewMode={viewMode}
-        setViewMode={setViewMode}
+        isXray={isXray}
+        setIsXray={setIsXray}
+        selectedPart={selectedPart}
+        onSelectPart={handleSelectPart}
+        onClearSelection={handleClearSelection}
         simulateFault={simulateFault}
         setSimulateFault={setSimulateFault}
         onResetView={handleResetView}
