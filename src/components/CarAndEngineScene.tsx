@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useGLTF, Html } from '@react-three/drei';
-import { useFrame, ThreeEvent } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 
 // Configure local Draco decoder path
 useGLTF.setDecoderPath('/draco/');
@@ -16,14 +16,12 @@ export const ENGINE_BAY_OFFSET = new THREE.Vector3(0, 0.38, 0.55);
 interface CarAndEngineSceneProps {
   isXray: boolean;
   selectedPartId: string | null;
-  onSelectPart: (partId: string) => void;
   simulateFault: boolean;
 }
 
 export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   isXray,
   selectedPartId,
-  onSelectPart,
   simulateFault,
 }) => {
   // Load real high-quality car.glb and engine.glb from public/
@@ -38,14 +36,14 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   const carMaterialsMap = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const engineOriginalEmissives = useRef<Map<THREE.MeshStandardMaterial, { color: THREE.Color; intensity: number }>>(new Map());
 
-  // Performance cache: store engine meshes in a flat array
+  // Performance cache: flat array of standard materials
   const engineStandardMeshesRef = useRef<THREE.MeshStandardMaterial[]>([]);
   const lastFaultStateRef = useRef<boolean>(false);
   const lastHighlightPartRef = useRef<string | null>(null);
 
-  // Smooth X-Ray opacity animation state
+  // Smooth X-Ray opacity state & idle settling flag
   const currentOpacityRef = useRef<number>(isXray ? 0.16 : 1.0);
-  const isFullyOpaqueRef = useRef<boolean>(!isXray);
+  const isOpacitySettledRef = useRef<boolean>(true);
 
   // ============================================================================
   // REUSABLE SHARED TRANSPARENT MATERIALS (Phase 2 glass specs)
@@ -57,7 +55,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         metalness: 0.15,
         roughness: 0.08,
         transparent: true,
-        opacity: 0.16, // Phase 2 target opacity
+        opacity: 0.16,
         depthWrite: false,
         clearcoat: 1.0,
         clearcoatRoughness: 0.08,
@@ -158,13 +156,13 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   }, [normalizedEngine]);
 
   // ============================================================================
-  // 3. ZERO-ALLOCATION MATERIAL SWAPPING WITH INSTANT REVERSIBILITY
+  // 3. ZERO-ALLOCATION MATERIAL SWAPPING
   // ============================================================================
   useEffect(() => {
     if (!normalizedCar) return;
+    isOpacitySettledRef.current = false;
 
     if (isXray) {
-      isFullyOpaqueRef.current = false;
       normalizedCar.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -191,7 +189,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         }
       });
     } else {
-      // When X-Ray turns OFF: restore exact original materials, textures, and depthWrite
+      // Restore exact showroom materials
       normalizedCar.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -201,17 +199,16 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
           }
         }
       });
-      isFullyOpaqueRef.current = true;
     }
   }, [isXray, normalizedCar, sharedMaterials]);
 
   // ============================================================================
-  // 4. ANIMATION FRAME (Smooth opacity lerp & emissive highlights)
+  // 4. LOW-LOAD ANIMATION FRAME (Zero math when idle)
   // ============================================================================
   useFrame((state, delta) => {
-    // Smoothly lerp transparent material opacity when in X-Ray
-    if (isXray) {
-      const targetOpacity = 0.16;
+    // A. Opacity Lerp (Only runs during transition until settled)
+    if (!isOpacitySettledRef.current) {
+      const targetOpacity = isXray ? 0.16 : 1.0;
       currentOpacityRef.current = THREE.MathUtils.damp(
         currentOpacityRef.current,
         targetOpacity,
@@ -219,13 +216,17 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         delta
       );
       sharedMaterials.transparentBody.opacity = currentOpacityRef.current;
-    } else {
-      currentOpacityRef.current = 1.0;
+
+      if (Math.abs(currentOpacityRef.current - targetOpacity) < 0.005) {
+        currentOpacityRef.current = targetOpacity;
+        sharedMaterials.transparentBody.opacity = targetOpacity;
+        isOpacitySettledRef.current = true;
+      }
     }
 
     const engineMats = engineStandardMeshesRef.current;
 
-    // A. OBD-II Fault Simulator Highlight (P0300)
+    // B. Emissive Highlights (Only runs when fault is active or engine is selected)
     if (simulateFault && isXray) {
       lastFaultStateRef.current = true;
       const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
@@ -236,7 +237,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         engineMats[i].emissiveIntensity = pulseIntensity;
       }
     } else if (selectedPartId === 'engine') {
-      // B. Selected Part Active Accent Highlight (Cyan/Sky glow)
       lastHighlightPartRef.current = 'engine';
       const pulse = Math.sin(state.clock.elapsedTime * 4.0) * 0.5 + 0.5;
       const highlightIntensity = 0.6 + pulse * 1.5;
@@ -246,7 +246,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         engineMats[i].emissiveIntensity = highlightIntensity;
       }
     } else if (lastFaultStateRef.current || lastHighlightPartRef.current) {
-      // C. Reset to original emissives exactly ONCE when highlight/fault clears
+      // Reset emissives ONCE when highlight clears
       lastFaultStateRef.current = false;
       lastHighlightPartRef.current = null;
 
@@ -264,50 +264,15 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
     }
   });
 
-  // Direct 3D mesh click handlers with strict tap-vs-drag protection (delta <= 5)
-  const handleEngineClick = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    if (e.delta <= 5) {
-      onSelectPart('engine');
-    }
-  };
-
-  const handleCarMeshClick = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    if (e.delta > 5) return; // Ignore drag rotation on touch screens
-
-    // Check mesh hierarchy for specific diagnostic zones
-    let current: THREE.Object3D | null = e.object;
-    let detectedPart: string | null = null;
-
-    while (current && current !== normalizedCar) {
-      const name = (current.name || '').toLowerCase();
-      if (name.includes('wheel') || name.includes('tire') || name.includes('brake') || name.includes('rim')) {
-        detectedPart = 'brakes';
-        break;
-      } else if (name.includes('exhaust') || name.includes('pipe') || name.includes('muffler')) {
-        detectedPart = 'exhaust';
-        break;
-      }
-      current = current.parent;
-    }
-
-    if (detectedPart) {
-      onSelectPart(detectedPart);
-    }
-  };
-
-  // Engine is visible when X-Ray is ON, or if Engine is selected
   const isEngineVisible = isXray || selectedPartId === 'engine';
 
   return (
     <group name="CarAndEngineScene">
-      {/* 1. REAL CAR MODEL */}
+      {/* 1. REAL CAR MODEL (Zero raycasting overhead on complex 58 submeshes) */}
       <primitive
         ref={carRef}
         object={normalizedCar}
         visible={true}
-        onPointerUp={handleCarMeshClick}
       />
 
       {/* 2. REALISTIC ENGINE MODEL */}
@@ -315,7 +280,6 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
         ref={engineRef}
         position={ENGINE_BAY_OFFSET.toArray()}
         visible={isEngineVisible}
-        onPointerUp={handleEngineClick}
       >
         <primitive object={normalizedEngine} />
 
@@ -327,12 +291,12 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
             distanceFactor={8}
             className="pointer-events-none select-none"
           >
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-600/95 text-white shadow-xl backdrop-blur-md border border-red-300 text-xs font-bold animate-pulse whitespace-nowrap shadow-red-500/50">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-600/95 text-white shadow-xl backdrop-blur-md border border-red-300 text-xs font-mono font-bold tracking-wider animate-pulse whitespace-nowrap">
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
               </span>
-              <span>P0300: Engine Misfire Detected</span>
+              <span>DTC P0300: MISFIRE DETECTED</span>
             </div>
           </Html>
         )}

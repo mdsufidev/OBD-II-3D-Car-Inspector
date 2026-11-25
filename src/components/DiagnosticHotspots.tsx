@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
-import { Html } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import React, { useRef, useState } from 'react';
+import { Billboard } from '@react-three/drei';
+import { useFrame, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { CAR_PARTS, CarPart } from '../data/partsConfig';
 
@@ -23,91 +23,110 @@ const SingleHotspot: React.FC<SingleHotspotProps> = ({
   onSelect,
   isXray,
 }) => {
-  const pointerDownPos = useRef<{ x: number; y: number } | null>(null);
+  const [hovered, setHovered] = useState(false);
   const ringRef = useRef<THREE.Mesh>(null);
+  const pulseRef = useRef<THREE.Mesh>(null);
 
-  // Subtle 3D radar pulse animation
+  // High-performance micro-pulse on selected/hovered state
   useFrame((state) => {
-    if (ringRef.current) {
-      const t = state.clock.elapsedTime * 2.5;
-      const scale = 1 + Math.sin(t) * 0.15;
-      ringRef.current.scale.set(scale, scale, scale);
+    if (isSelected && pulseRef.current) {
+      const s = 1.0 + Math.sin(state.clock.elapsedTime * 4.0) * 0.18;
+      pulseRef.current.scale.set(s, s, s);
     }
   });
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    pointerDownPos.current = { x: e.clientX, y: e.clientY };
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    if (!pointerDownPos.current) return;
-
-    // Strict tap vs drag guard: movement must be <= 6 pixels
-    const dx = e.clientX - pointerDownPos.current.x;
-    const dy = e.clientY - pointerDownPos.current.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (dist <= 6) {
+    // Strict tap vs drag guard (e.delta <= 5)
+    if (e.delta <= 5) {
       onSelect();
     }
-    pointerDownPos.current = null;
   };
 
-  // Determine visibility: external parts (brakes) always visible; internal parts glow brightly in X-Ray
-  const opacityClass = isSelected
-    ? 'opacity-100 scale-110 ring-4 ring-sky-400 ring-offset-2'
-    : isXray
-    ? 'opacity-90 hover:opacity-100 hover:scale-105'
-    : part.isInternal
-    ? 'opacity-40 hover:opacity-90'
-    : 'opacity-85 hover:opacity-100';
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    setHovered(true);
+    document.body.style.cursor = 'pointer';
+  };
+
+  const handlePointerOut = () => {
+    setHovered(false);
+    document.body.style.cursor = 'auto';
+  };
+
+  // Color scheme: high-contrast OEM technical palette
+  const accentColor = isSelected ? '#0284c7' : hovered ? '#0ea5e9' : '#475569';
+  const ringOpacity = isSelected ? 0.95 : hovered ? 0.85 : isXray ? 0.60 : 0.35;
 
   return (
     <group position={part.hotspotPosition}>
-      {/* 3D Visual Accent Ring */}
-      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.08, 0.11, 32]} />
-        <meshBasicMaterial
-          color={isSelected ? '#38bdf8' : '#0284c7'}
-          transparent
-          opacity={isSelected ? 0.9 : isXray ? 0.6 : 0.25}
-          side={THREE.DoubleSide}
-        />
+      {/* 1. Camera-Facing Hardware-Accelerated Technical Reticle (Zero DOM Reflows) */}
+      <Billboard follow={true} lockX={false} lockY={false} lockZ={false}>
+        {/* Outer Circular Targeting Reticle */}
+        <mesh ref={ringRef}>
+          <ringGeometry args={[0.075, 0.092, 32]} />
+          <meshBasicMaterial
+            color={accentColor}
+            transparent
+            opacity={ringOpacity}
+            side={THREE.DoubleSide}
+            depthTest={false}
+          />
+        </mesh>
+
+        {/* Selected Active Radar Wave */}
+        {isSelected && (
+          <mesh ref={pulseRef}>
+            <ringGeometry args={[0.095, 0.108, 32]} />
+            <meshBasicMaterial
+              color="#38bdf8"
+              transparent
+              opacity={0.45}
+              side={THREE.DoubleSide}
+              depthTest={false}
+            />
+          </mesh>
+        )}
+
+        {/* Center Target Point */}
+        <mesh>
+          <circleGeometry args={[0.024, 16]} />
+          <meshBasicMaterial
+            color={isSelected ? '#0284c7' : hovered ? '#0ea5e9' : '#0f172a'}
+            transparent
+            opacity={isSelected ? 1.0 : 0.75}
+            depthTest={false}
+          />
+        </mesh>
+
+        {/* CAD Crosshairs (Technical Reticle Tickmarks) */}
+        <mesh position={[0, 0.115, 0]}>
+          <planeGeometry args={[0.008, 0.035]} />
+          <meshBasicMaterial color={accentColor} transparent opacity={ringOpacity} depthTest={false} />
+        </mesh>
+        <mesh position={[0, -0.115, 0]}>
+          <planeGeometry args={[0.008, 0.035]} />
+          <meshBasicMaterial color={accentColor} transparent opacity={ringOpacity} depthTest={false} />
+        </mesh>
+        <mesh position={[0.115, 0, 0]}>
+          <planeGeometry args={[0.035, 0.008]} />
+          <meshBasicMaterial color={accentColor} transparent opacity={ringOpacity} depthTest={false} />
+        </mesh>
+        <mesh position={[-0.115, 0, 0]}>
+          <planeGeometry args={[0.035, 0.008]} />
+          <meshBasicMaterial color={accentColor} transparent opacity={ringOpacity} depthTest={false} />
+        </mesh>
+      </Billboard>
+
+      {/* 2. Low-Poly Invisible Hit Proxy Sphere for Instant Tap Detection */}
+      <mesh
+        onPointerUp={handlePointerUp}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
+        <sphereGeometry args={[0.22, 10, 10]} />
+        <meshBasicMaterial visible={false} />
       </mesh>
-
-      {/* Interactive 2D/3D DOM Diagnostic Badge */}
-      <Html center distanceFactor={6.8} className="select-none pointer-events-auto">
-        <div
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          className={`cursor-pointer transition-all duration-200 transform-gpu flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-lg backdrop-blur-md border ${opacityClass} ${
-            isSelected
-              ? 'bg-sky-600 text-white border-sky-300 shadow-sky-500/40'
-              : 'bg-white/95 text-slate-800 border-slate-200/90 shadow-slate-900/10 hover:border-sky-400'
-          }`}
-          title={`Inspect ${part.name}`}
-        >
-          {/* Animated Status Pulse Indicator */}
-          <span className="flex h-2 w-2 relative">
-            <span
-              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                isSelected ? 'bg-white' : 'bg-sky-400'
-              }`}
-            />
-            <span
-              className={`relative inline-flex rounded-full h-2 w-2 ${
-                isSelected ? 'bg-white' : 'bg-sky-500'
-              }`}
-            />
-          </span>
-
-          <span className="text-[11px] font-bold tracking-tight whitespace-nowrap">
-            {part.name.split(' ')[0]}
-          </span>
-        </div>
-      </Html>
     </group>
   );
 };

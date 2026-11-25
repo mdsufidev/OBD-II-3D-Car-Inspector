@@ -65,7 +65,6 @@ const SceneContent: React.FC<SceneContentProps> = ({
         <CarAndEngineScene
           isXray={isXray}
           selectedPartId={selectedPart?.id ?? null}
-          onSelectPart={onSelectPart}
           simulateFault={simulateFault}
         />
 
