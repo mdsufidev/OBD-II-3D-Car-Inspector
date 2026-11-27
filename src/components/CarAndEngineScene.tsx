@@ -36,6 +36,7 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   // Material caches for 100% reversible material restoration
   const carMaterialsMap = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const engineOriginalEmissives = useRef<Map<THREE.MeshStandardMaterial, { color: THREE.Color; intensity: number }>>(new Map());
+  const engineSubmeshesMap = useRef<Map<string, THREE.MeshStandardMaterial[]>>(new Map());
 
   // Performance cache: flat array of standard materials
   const engineStandardMeshesRef = useRef<THREE.MeshStandardMaterial[]>([]);
@@ -137,12 +138,15 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
   useEffect(() => {
     if (normalizedEngine) {
       engineOriginalEmissives.current.clear();
+      engineSubmeshesMap.current.clear();
       const stdMats: THREE.MeshStandardMaterial[] = [];
 
       normalizedEngine.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
+          const meshName = (mesh.name || '').toLowerCase();
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
           mats.forEach((mat) => {
             if (mat && 'emissive' in mat) {
               const stdMat = mat as THREE.MeshStandardMaterial;
@@ -151,6 +155,26 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
                 intensity: stdMat.emissiveIntensity,
               });
               stdMats.push(stdMat);
+
+              // Register into submesh map (matches exact name or heuristic keywords)
+              let key = 'mesh_engine_block';
+              if (meshName.includes('ignition') || meshName.includes('coil') || meshName.includes('plug')) {
+                key = 'mesh_ignition_rail';
+              } else if (meshName.includes('oil_housing') || meshName.includes('filter')) {
+                key = 'mesh_oil_housing';
+              } else if (meshName.includes('pan') || meshName.includes('sump')) {
+                key = 'mesh_oil_pan';
+              } else if (meshName.includes('cover') || meshName.includes('head')) {
+                key = 'mesh_valve_cover';
+              } else if (meshName.includes('dipstick')) {
+                key = 'mesh_dipstick_tube';
+              } else if (meshName.includes('pulley') || meshName.includes('crank')) {
+                key = 'mesh_crank_snout';
+              }
+
+              const existing = engineSubmeshesMap.current.get(key) || [];
+              existing.push(stdMat);
+              engineSubmeshesMap.current.set(key, existing);
             }
           });
         }
@@ -230,9 +254,28 @@ export const CarAndEngineScene: React.FC<CarAndEngineSceneProps> = ({
       const pulse = Math.sin(state.clock.elapsedTime * 6.0) * 0.5 + 0.5;
       const pulseIntensity = 0.8 + pulse * 2.8;
 
-      for (let i = 0; i < engineMats.length; i++) {
-        engineMats[i].emissive.set('#ef4444');
-        engineMats[i].emissiveIntensity = pulseIntensity;
+      const ignitionMats = engineSubmeshesMap.current.get('mesh_ignition_rail');
+
+      if (ignitionMats && ignitionMats.length > 0) {
+        // High-precision targeting: Glow the specific ignition coil rail in pulsing red
+        for (let i = 0; i < ignitionMats.length; i++) {
+          ignitionMats[i].emissive.set('#ef4444');
+          ignitionMats[i].emissiveIntensity = pulseIntensity;
+        }
+
+        // Keep surrounding engine block subtly highlighted in technical blue contour
+        for (let i = 0; i < engineMats.length; i++) {
+          if (!ignitionMats.includes(engineMats[i])) {
+            engineMats[i].emissive.set('#0284c7');
+            engineMats[i].emissiveIntensity = 0.15;
+          }
+        }
+      } else {
+        // Fallback for single-mesh engine models
+        for (let i = 0; i < engineMats.length; i++) {
+          engineMats[i].emissive.set('#ef4444');
+          engineMats[i].emissiveIntensity = pulseIntensity;
+        }
       }
     } else if (selectedPartId === 'engine') {
       lastHighlightPartRef.current = 'engine';

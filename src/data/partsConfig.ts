@@ -34,6 +34,8 @@ export interface CarPart {
   obdStatus: string;
   statusType: 'nominal' | 'warning' | 'fault';
   faultCode: string;
+  submeshName?: string;
+  faultSubmeshName?: string;
   fault: DTCFault;
   pids: DiagnosticPID[];
   specs: { label: string; value: string }[];
@@ -86,6 +88,8 @@ export const CAR_PARTS: CarPart[] = [
     obdStatus: 'SYSTEM NOMINAL // DTC 0',
     statusType: 'nominal',
     faultCode: 'P0300',
+    submeshName: 'mesh_engine_block',
+    faultSubmeshName: 'mesh_ignition_rail',
     fault: {
       code: 'P0300',
       partId: 'engine',

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "compress:engine": "node scripts/compress-glb.js"
   },
   "dependencies": {
     "@react-three/drei": "^9.121.4",
